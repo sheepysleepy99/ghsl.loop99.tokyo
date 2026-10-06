@@ -5123,10 +5123,101 @@ Macro.add(&quot;reyoon&quot;, {
 &lt;&lt;/script&gt;&gt;</tw-passagedata><tw-passagedata pid="25" name="showh" tags="Macro" position="2050,375" size="100,100">&lt;&lt;script&gt;&gt;
 Macro.delete(&quot;showh&quot;);
 Macro.delete(&quot;hideh&quot;);
+
+// ★ 悬浮窗显隐状态持久化（存进变量，读档后在正文静止时恢复）
+if (!setup._floatSid) {
+    setup._floatSid = Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
+}
+
+setup._applyFloatVis = function(v) {
+    const map = { h: &quot;float-windowleft&quot;, k: &quot;float-windowright&quot;, y: &quot;float-windowyoon&quot; };
+    if (setup._hidekTimer) { clearTimeout(setup._hidekTimer); setup._hidekTimer = null; }
+    if (setup._hideyTimer) { clearTimeout(setup._hideyTimer); setup._hideyTimer = null; }
+    Object.keys(map).forEach(function(key) {
+        const el = document.getElementById(map[key]);
+        if (!el) return;
+        el.classList.remove(&quot;float-fadein&quot;, &quot;float-fadeout&quot;);
+        el.style.display = v[key] ? &quot;block&quot; : &quot;none&quot;;
+    });
+    try {
+        if (v.h) {
+            State.variables._lastlove = State.variables.you.love;
+            State.variables._lasthate = State.variables.you.hate;
+            Macro.get(&#39;releft&#39;).handler();
+        }
+        if (v.k) {
+            State.variables._lastaffection = State.variables.kim.affection;
+            State.variables._lastsanity = State.variables.kim.sanity;
+            Macro.get(&#39;reright&#39;).handler();
+        }
+        if (v.y) {
+            State.variables._lastanger = State.variables.yoon.anger;
+            Macro.get(&#39;reyoon&#39;).handler();
+        }
+    } catch (e) { console.warn(&#39;[floatVis] 刷新数值失败&#39;, e); }
+};
+
+setup._scheduleFloatApply = function() {
+    const host = document.getElementById(&#39;passages&#39;);
+    let done = false;
+    let quietTimer = null;
+    let obs = null;
+    const fire = function() {
+        if (done) return;
+        done = true;
+        if (obs) obs.disconnect();
+        clearTimeout(quietTimer);
+        const v = State.variables._floatVis;
+        if (v &amp;&amp; typeof v === &quot;object&quot;) {
+            setup._applyFloatVis(v);
+            console.log(&#39;[floatVis] 已按存档恢复悬浮窗&#39;, v);
+        }
+    };
+    if (host) {
+        obs = new MutationObserver(function() {
+            clearTimeout(quietTimer);
+            quietTimer = setTimeout(fire, 800);
+        });
+        obs.observe(host, { childList: true, subtree: true, characterData: true });
+    }
+    quietTimer = setTimeout(fire, 800);
+    setTimeout(fire, 10000);
+};
+
+setup._checkLoadedFloatVis = function() {
+    const v = State.variables._floatVis;
+    if (!v || typeof v !== &quot;object&quot;) return;
+    if (v.sid === setup._floatSid) return;
+    if (!document.getElementById(&quot;float-windowleft&quot;)) return;
+    v.sid = setup._floatSid;
+    setup._scheduleFloatApply();
+};
+
+setup._markFloatVis = function(key, val) {
+    setup._checkLoadedFloatVis();
+    let v = State.variables._floatVis;
+    if (!v || typeof v !== &quot;object&quot;) {
+        v = State.variables._floatVis = { h: false, k: false, y: false };
+    }
+    v[key] = val;
+    v.sid = setup._floatSid;
+};
+
+if (!setup._floatVisHooked) {
+    setup._floatVisHooked = true;
+    let ticks = 0;
+    const iv = setInterval(function() {
+        setup._checkLoadedFloatVis();
+        if (++ticks &gt; 100) clearInterval(iv);
+    }, 200);
+}
+
 Macro.add(&quot;showh&quot;, {
     handler: function() {
         const windowleft = document.getElementById(&quot;float-windowleft&quot;);
         if (!windowleft) return;
+        
+        setup._markFloatVis(&quot;h&quot;, true);
         
         // 检查是否在快进模式
         const shouldSkipAnimations = (setup.shouldSkipAnimations &amp;&amp; setup.shouldSkipAnimations()) || 
@@ -5161,6 +5252,8 @@ Macro.add(&quot;hideh&quot;, {
         const windowleft = document.getElementById(&quot;float-windowleft&quot;);
         if (!windowleft) return;
         
+        setup._markFloatVis(&quot;h&quot;, false);
+        
         // 检查是否在快进模式
         const shouldSkipAnimations = (setup.shouldSkipAnimations &amp;&amp; setup.shouldSkipAnimations()) || 
                                    State.variables._skipFloatAnimations ||
@@ -5188,6 +5281,8 @@ Macro.add(&quot;showk&quot;, {
     handler: function() {
         const windowRight = document.getElementById(&quot;float-windowright&quot;);
         if (!windowRight) return;
+        
+        setup._markFloatVis(&quot;k&quot;, true);
         
         // 取消任何还没执行的 hidek 定时器
         if (setup._hidekTimer) {
@@ -5227,6 +5322,8 @@ Macro.add(&quot;hidek&quot;, {
         const windowRight = document.getElementById(&quot;float-windowright&quot;);
         if (!windowRight) return;
         
+        setup._markFloatVis(&quot;k&quot;, false);
+        
         const shouldSkipAnimations = (setup.shouldSkipAnimations &amp;&amp; setup.shouldSkipAnimations()) || 
                                    State.variables._skipFloatAnimations ||
                                    (setup.isInFastForwardMode &amp;&amp; setup.isInFastForwardMode()) ||
@@ -5254,6 +5351,8 @@ Macro.add(&quot;showy&quot;, {
     handler: function() {
         const windowyoon = document.getElementById(&quot;float-windowyoon&quot;);
         if (!windowyoon) return;
+        
+        setup._markFloatVis(&quot;y&quot;, true);
         
         if (setup._hideyTimer) {
             clearTimeout(setup._hideyTimer);
@@ -5289,6 +5388,8 @@ Macro.add(&quot;hidey&quot;, {
     handler: function() {
         const windowyoon = document.getElementById(&quot;float-windowyoon&quot;);
         if (!windowyoon) return;
+        
+        setup._markFloatVis(&quot;y&quot;, false);
         
         const shouldSkipAnimations = (setup.shouldSkipAnimations &amp;&amp; setup.shouldSkipAnimations()) || 
                                    State.variables._skipFloatAnimations ||
